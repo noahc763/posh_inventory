@@ -8,7 +8,7 @@ from pymongo import MongoClient
 from bson import ObjectId
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # Replace with a strong secret
+app.secret_key = os.environ['Aurora143:)']  # Replace with a strong secret
 
 # static/uploads for images
 UPLOAD_FOLDER = os.path.join('static', 'uploads')
