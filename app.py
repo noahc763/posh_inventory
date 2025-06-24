@@ -12,7 +12,10 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key')
 
 # MongoDB connection
-mongo_uri = os.environ.get('MONGO_URI', "mongodb+srv://local:local@local-cluster.crpsu8t.mongodb.net/")
+mongo_uri = os.environ.get(
+    'MONGO_URI',
+    "mongodb+srv://local:local@local-cluster.crpsu8t.mongodb.net/"
+)
 client = MongoClient(mongo_uri)
 db = client["inventory"]
 collection = db["items"]
@@ -45,22 +48,27 @@ def index():
     direction = ASCENDING if order == 'asc' else DESCENDING
 
     # Whitelist sortable fields
-    if sort not in {'item_name','purchase_date','store','quantity','original_price','sold_price','profit','return_by'}:
+    allowed_sorts = {
+        'item_name','purchase_date','store','quantity',
+        'original_price','sold_price','profit','return_by'
+    }
+    if sort not in allowed_sorts:
         sort = 'item_name'
 
     items = list(collection.find().sort(sort, direction))
     next_order = 'desc' if order == 'asc' else 'asc'
 
-    return render_template('index.html',
-                           items=items,
-                           sort=sort,
-                           order=order,
-                           next_order=next_order)
+    return render_template(
+        'index.html',
+        items=items,
+        sort=sort,
+        order=order,
+        next_order=next_order
+    )
 
 @app.route('/add_item', methods=['GET','POST'])
 def add_item():
     if request.method == 'POST':
-        # Basic fields
         name = request.form['item_name'].strip()
         try:
             qty = int(request.form['quantity'])
@@ -73,17 +81,19 @@ def add_item():
         fee = calculate_poshmark_fee(sp)
         prf = round(sp - fee - op, 2) if sp > 0 else 0.0
 
-        # New fields: purchase date & store
+        # New fields
         pd_str = request.form.get('purchase_date','')
         try:
             purchase_date = datetime.datetime.strptime(pd_str, '%Y-%m-%d')
         except ValueError:
-            flash("Invalid purchase date format.", "danger")
+            flash("Invalid purchase date.", "danger")
             return redirect(url_for('add_item'))
+
         store = request.form.get('store','').strip()
         if not store:
             flash("Store is required.", "danger")
             return redirect(url_for('add_item'))
+
         return_by = purchase_date + datetime.timedelta(days=30)
 
         # Image upload
@@ -96,7 +106,6 @@ def add_item():
             f.save(path)
             img_url = f"uploads/{fn}"
 
-        # Insert document
         doc = {
             'item_name': name,
             'quantity': qty,
@@ -139,12 +148,14 @@ def update_item(item_id):
         try:
             purchase_date = datetime.datetime.strptime(pd_str, '%Y-%m-%d')
         except ValueError:
-            flash("Invalid purchase date format.", "danger")
+            flash("Invalid purchase date.", "danger")
             return redirect(url_for('update_item', item_id=item_id))
+
         store = request.form.get('new_store','').strip()
         if not store:
             flash("Store is required.", "danger")
             return redirect(url_for('update_item', item_id=item_id))
+
         return_by = purchase_date + datetime.timedelta(days=30)
 
         # Image upload (optional replace)
@@ -157,7 +168,6 @@ def update_item(item_id):
             f.save(path)
             img_url = f"uploads/{fn}"
 
-        # Update document
         collection.update_one(
             {'_id': ObjectId(item_id)},
             {'$set': {
@@ -188,8 +198,10 @@ def export_csv():
     items = list(collection.find())
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(['Item Name','Quantity','Original Price','Sold Price','Poshmark Fee','Profit',
-                'Purchase Date','Store','Return By','Image URL'])
+    w.writerow([
+        'Item Name','Quantity','Original Price','Sold Price','Poshmark Fee',
+        'Profit','Purchase Date','Store','Return By','Image URL'
+    ])
     for it in items:
         w.writerow([
             it['item_name'],
@@ -204,10 +216,12 @@ def export_csv():
             it.get('image_url','')
         ])
     buf.seek(0)
-    return send_file(io.BytesIO(buf.getvalue().encode()),
-                     mimetype='text/csv',
-                     as_attachment=True,
-                     download_name='inventory_export.csv')
+    return send_file(
+        io.BytesIO(buf.getvalue().encode()),
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name='inventory_export.csv'
+    )
 
 @app.route('/import_csv', methods=['GET','POST'])
 def import_csv():
@@ -221,6 +235,7 @@ def import_csv():
         reader = csv.reader(stream)
         next(reader, None)  # skip header
         count = 0
+
         for row in reader:
             try:
                 name = row[0]
@@ -232,19 +247,19 @@ def import_csv():
                 pd = datetime.datetime.strptime(row[6], '%Y-%m-%d')
                 store = row[7]
                 rb = datetime.datetime.strptime(row[8], '%Y-%m-%d')
-                img = row[9] if len(row)>9 else None
+                img = row[9] if len(row) > 9 else None
 
                 doc = {
-                  'item_name': name,
-                  'quantity': qty,
-                  'original_price': op,
-                  'sold_price': sp,
-                  'poshmark_fee': fee,
-                  'profit': prf,
-                  'purchase_date': pd,
-                  'store': store,
-                  'return_by': rb,
-                  'image_url': img
+                    'item_name': name,
+                    'quantity': qty,
+                    'original_price': op,
+                    'sold_price': sp,
+                    'poshmark_fee': fee,
+                    'profit': prf,
+                    'purchase_date': pd,
+                    'store': store,
+                    'return_by': rb,
+                    'image_url': img
                 }
                 collection.insert_one(doc)
                 count += 1
@@ -257,6 +272,8 @@ def import_csv():
     return render_template('import_csv.html')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0',
-            port=int(os.environ.get('PORT', 5000)),
-            debug=True)
+    app.run(
+        host='0.0.0.0',
+        port=int(os.environ.get('PORT', 5000)),
+        debug=True
+    )
