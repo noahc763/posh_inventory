@@ -4,9 +4,11 @@ import io
 import csv
 import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from werkzeug.utils import secure_filename
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from bson import ObjectId
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key')
@@ -19,6 +21,23 @@ mongo_uri = os.environ.get(
 client = MongoClient(mongo_uri)
 db = client["inventory"]
 collection = db["items"]
+items_collection = db["users"]
+
+#Flask login
+login_manager = LoginManager()
+login_manager.login_view = 'login'
+login_manager.init_app(app)
+
+#User class for Flask Login
+class User(UserMixin):
+    def __init__(self, user_data):
+        self.id = str(user_data['_id'])
+        self.username = user_data['username']
+
+@login_manager.userloader
+def load_user(user_id):
+    user = users_collection.find_one({'_id': ObjectId(user_id)})
+    return User(user) if user else None
 
 # File uploads
 UPLOAD_FOLDER = os.path.join('static', 'uploads')
@@ -270,6 +289,61 @@ def import_csv():
         return redirect(url_for('index'))
 
     return render_template('import_csv.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = generate_password_hash(request.form['password'])
+        if users_collection.find_one({'username': username}):
+            return 'Username already exists!'
+        users_collection.insert_one({'username': username, 'password': password})
+        return redirect(url_for('login'))
+    return render_template('register.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        user = users_collection.find_one({'username': username})
+        if user and check_password_hash(user['password'], password):
+            login_user(User(user))
+            return redirect(url_for('index'))
+        return 'Invalid credentials!'
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+app.route('/')
+@login_required
+def index():
+    items = items_collection.find({'user_id': current_user.id})
+    return render_template('index.html', items=items)
+
+@app.route('/add_item', methods=['POST'])
+@login_required
+def add_item():
+    item_name = request.form['item_name']
+    quantity = int(request.form['quantity'])
+    price = float(request.form['price'])
+
+    items_collection.insert_one({
+        'item_name': item_name,
+        'quantity': quantity,
+        'price': price,
+        'user_id': current_user.id
+    })
+@app.route('/delete/<item_id')
+@login_required
+def delete_item(item_id):
+    items_collection.delete_one({'_id': ObjectId(item_id), 'user_id': current_user.id})
+    return redirect(url_for('index'))
+
 
 if __name__ == '__main__':
     app.run(

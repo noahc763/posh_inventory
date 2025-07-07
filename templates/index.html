@@ -21,6 +21,9 @@
     }
   </style>
 </head>
+<h2>Welcome, {{ current_user.username }}</h2>
+<a href="{{ url_for('logout') }}">Logout</a>
+
 <body class="bg-light">
 <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
   <div class="container">
