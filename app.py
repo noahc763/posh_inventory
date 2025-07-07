@@ -20,8 +20,8 @@ mongo_uri = os.environ.get(
 )
 client = MongoClient(mongo_uri)
 db = client["inventory"]
+users_collection = db["users"]
 collection = db["items"]
-items_collection = db["users"]
 
 #Flask login
 login_manager = LoginManager()
@@ -34,7 +34,7 @@ class User(UserMixin):
         self.id = str(user_data['_id'])
         self.username = user_data['username']
 
-@login_manager.userloader
+@login_manager.user_loader
 def load_user(user_id):
     user = users_collection.find_one({'_id': ObjectId(user_id)})
     return User(user) if user else None
@@ -206,11 +206,6 @@ def update_item(item_id):
 
     return render_template('update_item.html', item=item)
 
-@app.route('/delete_item/<item_id>')
-def delete_item(item_id):
-    collection.delete_one({'_id': ObjectId(item_id)})
-    flash("Item deleted.", "info")
-    return redirect(url_for('index'))
 
 @app.route('/export_csv')
 def export_csv():
@@ -322,7 +317,7 @@ def logout():
 app.route('/')
 @login_required
 def index():
-    items = items_collection.find({'user_id': current_user.id})
+    items = collection.find({'user_id': current_user.id})
     return render_template('index.html', items=items)
 
 @app.route('/add_item', methods=['POST'])
@@ -332,16 +327,19 @@ def add_item():
     quantity = int(request.form['quantity'])
     price = float(request.form['price'])
 
-    items_collection.insert_one({
+    collection.insert_one({
         'item_name': item_name,
         'quantity': quantity,
         'price': price,
         'user_id': current_user.id
     })
+    return redirect(url_for('index'))
+
+
 @app.route('/delete/<item_id')
 @login_required
 def delete_item(item_id):
-    items_collection.delete_one({'_id': ObjectId(item_id), 'user_id': current_user.id})
+    collection.delete_one({'_id': ObjectId(item_id), 'user_id': current_user.id})
     return redirect(url_for('index'))
 
 
