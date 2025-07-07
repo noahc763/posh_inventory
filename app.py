@@ -86,6 +86,7 @@ def index():
     )
 
 @app.route('/add_item', methods=['GET','POST'])
+@login_required
 def add_item():
     if request.method == 'POST':
         name = request.form['item_name'].strip()
