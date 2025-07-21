@@ -13,22 +13,16 @@ from werkzeug.security import generate_password_hash, check_password_hash
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key')
 
-# MongoDB connection
-mongo_uri = os.environ.get(
-    'MONGO_URI',
-    "mongodb+srv://local:local@local-cluster.crpsu8t.mongodb.net/"
-)
+mongo_uri = os.environ.get('MONGO_URI', "mongodb+srv://local:local@local-cluster.crpsu8t.mongodb.net/")
 client = MongoClient(mongo_uri)
 db = client["inventory"]
 users_collection = db["users"]
 collection = db["items"]
 
-#Flask login
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
 
-#User class for Flask Login
 class User(UserMixin):
     def __init__(self, user_data):
         self.id = str(user_data['_id'])
@@ -39,7 +33,6 @@ def load_user(user_id):
     user = users_collection.find_one({'_id': ObjectId(user_id)})
     return User(user) if user else None
 
-# File uploads
 UPLOAD_FOLDER = os.path.join('static', 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -55,18 +48,15 @@ def safe_float(val):
         return 0.0
 
 def calculate_poshmark_fee(sp):
-    if sp <= 0:
-        return 0.0
-    return 2.95 if sp < 15 else sp * 0.20
+    return 2.95 if sp < 15 else sp * 0.20 if sp > 0 else 0.0
 
 @app.route('/')
+@login_required
 def index():
-    # Sorting parameters
     sort = request.args.get('sort', 'item_name')
     order = request.args.get('order', 'asc')
     direction = ASCENDING if order == 'asc' else DESCENDING
 
-    # Whitelist sortable fields
     allowed_sorts = {
         'item_name','purchase_date','store','quantity',
         'original_price','sold_price','profit','return_by'
@@ -74,16 +64,10 @@ def index():
     if sort not in allowed_sorts:
         sort = 'item_name'
 
-    items = list(collection.find().sort(sort, direction))
+    items = list(collection.find({'user_id': current_user.id}).sort(sort, direction))
     next_order = 'desc' if order == 'asc' else 'asc'
 
-    return render_template(
-        'index.html',
-        items=items,
-        sort=sort,
-        order=order,
-        next_order=next_order
-    )
+    return render_template('index.html', items=items, sort=sort, order=order, next_order=next_order)
 
 @app.route('/add_item', methods=['GET','POST'])
 @login_required
@@ -101,10 +85,8 @@ def add_item():
         fee = calculate_poshmark_fee(sp)
         prf = round(sp - fee - op, 2) if sp > 0 else 0.0
 
-        # New fields
-        pd_str = request.form.get('purchase_date','')
         try:
-            purchase_date = datetime.datetime.strptime(pd_str, '%Y-%m-%d')
+            purchase_date = datetime.datetime.strptime(request.form.get('purchase_date',''), '%Y-%m-%d')
         except ValueError:
             flash("Invalid purchase date.", "danger")
             return redirect(url_for('add_item'))
@@ -116,7 +98,6 @@ def add_item():
 
         return_by = purchase_date + datetime.timedelta(days=30)
 
-        # Image upload
         img_url = None
         f = request.files.get('image')
         if f and allowed_file(f.filename):
@@ -136,7 +117,8 @@ def add_item():
             'purchase_date': purchase_date,
             'store': store,
             'return_by': return_by,
-            'image_url': img_url
+            'image_url': img_url,
+            'user_id': current_user.id
         }
         collection.insert_one(doc)
         flash("Item added!", "success")
@@ -145,8 +127,9 @@ def add_item():
     return render_template('add_item.html')
 
 @app.route('/update_item/<item_id>', methods=['GET','POST'])
+@login_required
 def update_item(item_id):
-    item = collection.find_one({'_id': ObjectId(item_id)})
+    item = collection.find_one({'_id': ObjectId(item_id), 'user_id': current_user.id})
     if not item:
         flash("Item not found.", "danger")
         return redirect(url_for('index'))
@@ -163,10 +146,8 @@ def update_item(item_id):
         fee = calculate_poshmark_fee(sp)
         prf = round(sp - fee - op, 2) if sp > 0 else 0.0
 
-        # Update purchase date & store
-        pd_str = request.form.get('new_purchase_date','')
         try:
-            purchase_date = datetime.datetime.strptime(pd_str, '%Y-%m-%d')
+            purchase_date = datetime.datetime.strptime(request.form.get('new_purchase_date',''), '%Y-%m-%d')
         except ValueError:
             flash("Invalid purchase date.", "danger")
             return redirect(url_for('update_item', item_id=item_id))
@@ -178,7 +159,6 @@ def update_item(item_id):
 
         return_by = purchase_date + datetime.timedelta(days=30)
 
-        # Image upload (optional replace)
         img_url = item.get('image_url')
         f = request.files.get('image')
         if f and allowed_file(f.filename):
@@ -207,16 +187,19 @@ def update_item(item_id):
 
     return render_template('update_item.html', item=item)
 
+@app.route('/delete/<item_id>')
+@login_required
+def delete_item(item_id):
+    collection.delete_one({'_id': ObjectId(item_id), 'user_id': current_user.id})
+    return redirect(url_for('index'))
 
 @app.route('/export_csv')
+@login_required
 def export_csv():
-    items = list(collection.find())
+    items = list(collection.find({'user_id': current_user.id}))
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow([
-        'Item Name','Quantity','Original Price','Sold Price','Poshmark Fee',
-        'Profit','Purchase Date','Store','Return By','Image URL'
-    ])
+    w.writerow(['Item Name','Quantity','Original Price','Sold Price','Poshmark Fee','Profit','Purchase Date','Store','Return By','Image URL'])
     for it in items:
         w.writerow([
             it['item_name'],
@@ -239,6 +222,7 @@ def export_csv():
     )
 
 @app.route('/import_csv', methods=['GET','POST'])
+@login_required
 def import_csv():
     if request.method == 'POST':
         file = request.files.get('file')
@@ -248,33 +232,23 @@ def import_csv():
 
         stream = io.StringIO(file.stream.read().decode(), newline=None)
         reader = csv.reader(stream)
-        next(reader, None)  # skip header
+        next(reader, None)
         count = 0
 
         for row in reader:
             try:
-                name = row[0]
-                qty = int(row[1])
-                op = safe_float(row[2])
-                sp = safe_float(row[3])
-                fee = safe_float(row[4])
-                prf = safe_float(row[5])
-                pd = datetime.datetime.strptime(row[6], '%Y-%m-%d')
-                store = row[7]
-                rb = datetime.datetime.strptime(row[8], '%Y-%m-%d')
-                img = row[9] if len(row) > 9 else None
-
                 doc = {
-                    'item_name': name,
-                    'quantity': qty,
-                    'original_price': op,
-                    'sold_price': sp,
-                    'poshmark_fee': fee,
-                    'profit': prf,
-                    'purchase_date': pd,
-                    'store': store,
-                    'return_by': rb,
-                    'image_url': img
+                    'item_name': row[0],
+                    'quantity': int(row[1]),
+                    'original_price': safe_float(row[2]),
+                    'sold_price': safe_float(row[3]),
+                    'poshmark_fee': safe_float(row[4]),
+                    'profit': safe_float(row[5]),
+                    'purchase_date': datetime.datetime.strptime(row[6], '%Y-%m-%d'),
+                    'store': row[7],
+                    'return_by': datetime.datetime.strptime(row[8], '%Y-%m-%d'),
+                    'image_url': row[9] if len(row) > 9 else None,
+                    'user_id': current_user.id
                 }
                 collection.insert_one(doc)
                 count += 1
@@ -315,38 +289,5 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-app.route('/')
-@login_required
-def index():
-    items = collection.find({'user_id': current_user.id})
-    return render_template('index.html', items=items)
-
-@app.route('/add_item', methods=['POST'])
-@login_required
-def add_item():
-    item_name = request.form['item_name']
-    quantity = int(request.form['quantity'])
-    price = float(request.form['price'])
-
-    collection.insert_one({
-        'item_name': item_name,
-        'quantity': quantity,
-        'price': price,
-        'user_id': current_user.id
-    })
-    return redirect(url_for('index'))
-
-
-@app.route('/delete/<item_id')
-@login_required
-def delete_item(item_id):
-    collection.delete_one({'_id': ObjectId(item_id), 'user_id': current_user.id})
-    return redirect(url_for('index'))
-
-
 if __name__ == '__main__':
-    app.run(
-        host='0.0.0.0',
-        port=int(os.environ.get('PORT', 5000)),
-        debug=True
-    )
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
