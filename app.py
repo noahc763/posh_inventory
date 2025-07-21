@@ -4,20 +4,31 @@ import io
 import csv
 import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask_mail import Mail, Message
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from werkzeug.utils import secure_filename
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from bson import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
+import secrets
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key')
+
+#Email config
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
+mail = Mail(app)
 
 mongo_uri = os.environ.get('MONGO_URI', "mongodb+srv://local:local@local-cluster.crpsu8t.mongodb.net/")
 client = MongoClient(mongo_uri)
 db = client["inventory"]
 users_collection = db["users"]
 collection = db["items"]
+tokens_collection = db["reset_tokens"]
 
 login_manager = LoginManager()
 login_manager.login_view = 'login'
@@ -263,12 +274,27 @@ def import_csv():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username']
-        password = generate_password_hash(request.form['password'])
-        if users_collection.find_one({'username': username}):
-            return 'Username already exists!'
-        users_collection.insert_one({'username': username, 'password': password})
+        email = request.form['email'].strip().lower()
+        username = request.form['username'.strip()]
+        password = request.form['password']
+        confirm = request.form['confirm']
+
+        if password != confirm:
+            flash("Passwords do not match.", "danger")
+            return redirect(url_for('register'))
+        
+        if users_collection.find_one({'$or': {[{'username': username}, {'email': email}]}}):
+            flash("Username or email already exists.", "danger")
+            return redirect(url_for('register'))
+        
+        users_collection.insert_one({
+            'email': email,
+            'username': username,
+            'password': generate_password_hash
+        })
+        flash("Account created! Please log in.", "success")
         return redirect(url_for('login'))
+    
     return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -280,8 +306,61 @@ def login():
         if user and check_password_hash(user['password'], password):
             login_user(User(user))
             return redirect(url_for('index'))
-        return 'Invalid credentials!'
+        flash('Username already exists!', 'danger')
+        return redirect(url_for('login'))
     return render_template('login.html')
+
+@app.route('/forgot_password', method=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form['email'].strip().lower()
+        user = users_collection.find_one({'email': email})
+        if user:
+            token = secrets.token_urlsafe(24)
+            tokens_collection.insert_one({
+                'token': token,
+                'user_id': str(user['_id']),
+                'created_at': datetime.datetime.utcnow()
+            })
+            link = url_for('reset_password', token=token, external=True)
+
+            msg = Message("Password Reset Request",
+                          sender = app.config['MAIL_USERNAME'],
+                          recipient=[email])
+            msg.body = f"Hi {user['username']}, click the link below to reset your password:\n{link}"
+            mail.send(msg)
+            flash("Password reset email sent! Check your inbox.", "success")
+        else:
+            flash("No account with that email.", "danger")
+        return redirect(url_for('login'))
+    
+    return render_template('forgot_password.html')
+
+@app.route('/reset_password/<token>', method=['GET', 'POST'])
+def reset_password(token):
+    token_doc = tokens_collection.find_one({'token': token})
+    if not token_doc:
+        flash("Invalid or expired token.", "danger")
+    if not user_id:
+        flash("Invalid or expired token.", "danger")
+        return redirect(url_for('login'))
+    
+    user_id = token_doc['user_id']
+    
+    if request.method == 'POST':
+        password = request.form['password']
+        confirm = request.form['confirm']
+        if password != confirm:
+            flash("Passwords do not match.", "danger")
+            return redirect(request.url)
+        
+        hashed_pw = generate_password_hash(password)
+        users_collection.update_one({'_id': ObjectId(user_id)}, {'$set': {'password': hashed_pw}})
+        tokens_collection.delete_one({'token': token})
+        flash("Password updated successfully!", "success")
+        return redirect(url_for('login'))
+    
+    return render_template('reset_password.html')
 
 @app.route('/logout')
 @login_required
