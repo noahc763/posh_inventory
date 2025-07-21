@@ -327,7 +327,7 @@ def forgot_password():
 
             msg = Message("Password Reset Request",
                           sender = app.config['MAIL_USERNAME'],
-                          recipient=[email])
+                          recipients=[email])
             msg.body = f"Hi {user['username']}, click the link below to reset your password:\n{link}"
             mail.send(msg)
             flash("Password reset email sent! Check your inbox.", "success")
