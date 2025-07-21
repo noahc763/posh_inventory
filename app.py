@@ -347,11 +347,7 @@ def reset_password(token):
     token_doc = tokens_collection.find_one({'token': token})
     if not token_doc:
         flash("Invalid or expired token.", "danger")
-    if not token_doc:
-        flash("Invalid or expired token.", "danger")
         return redirect(url_for('login'))
-    
-    user_id = token_doc['user_id']
     
     user_id = token_doc['user_id']
     
