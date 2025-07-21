@@ -109,7 +109,12 @@ def add_item():
 
         store = request.form.get('store','').strip()
         if not store:
-            flash("Store is required.", "danger")
+            flash("store is required.", "danger")
+            return redirect(url_for('add_item'))
+        
+        category = request.form.get('category', '').strip()
+        if not category:
+            flash("Category is required.", "danger")
             return redirect(url_for('add_item'))
 
         return_by = purchase_date + datetime.timedelta(days=30)
@@ -132,6 +137,7 @@ def add_item():
             'profit': prf,
             'purchase_date': purchase_date,
             'store': store,
+            'category': category,
             'return_by': return_by,
             'image_url': img_url,
             'user_id': current_user.id
@@ -169,8 +175,9 @@ def update_item(item_id):
             return redirect(url_for('update_item', item_id=item_id))
 
         store = request.form.get('new_store','').strip()
-        if not store:
-            flash("Store is required.", "danger")
+        category = request.form.get('new_category', '').strip()
+        if not store or not category:
+            flash("Store and Category are required.", "danger")
             return redirect(url_for('update_item', item_id=item_id))
 
         return_by = purchase_date + datetime.timedelta(days=30)
@@ -194,6 +201,7 @@ def update_item(item_id):
                 'profit': prf,
                 'purchase_date': purchase_date,
                 'store': store,
+                'category': category,
                 'return_by': return_by,
                 'image_url': img_url
             }}
