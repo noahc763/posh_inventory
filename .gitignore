@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+.venv/
+*.sqlite3
+
+# VS Code
+.vscode/
+
+# Environment Variables
+.env
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Flask uploads (optional)
+instance/
+uploads/
+static/uploads/
+
+# Python egg
+*.egg-info/
+
+# Bytecode cache
+*.pyc
+#Environment
+*.env
