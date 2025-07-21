@@ -284,6 +284,15 @@ def import_csv():
 
     return render_template('import_csv.html')
 
+@app.route('/category/<name>')
+@login_required
+def filter_category(name):
+    items = list(collection.find({
+        'user_id': current_user.id,
+        'category': name
+    }))
+    return render_template('index.html', items=items, sort='item_name', order='asc', next_order='desc', selected_category=name)
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
