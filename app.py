@@ -275,7 +275,7 @@ def import_csv():
 def register():
     if request.method == 'POST':
         email = request.form['email'].strip().lower()
-        username = request.form['username'.strip()]
+        username = request.form['username'].strip()
         password = request.form['password']
         confirm = request.form['confirm']
 
@@ -283,19 +283,20 @@ def register():
             flash("Passwords do not match.", "danger")
             return redirect(url_for('register'))
         
-        if users_collection.find_one({'$or': {[{'username': username}, {'email': email}]}}):
+        if users_collection.find_one({'$or': [{'username': username}, {'email': email}]}):
             flash("Username or email already exists.", "danger")
             return redirect(url_for('register'))
         
         users_collection.insert_one({
             'email': email,
             'username': username,
-            'password': generate_password_hash
+            'password': generate_password_hash(password)
         })
         flash("Account created! Please log in.", "success")
         return redirect(url_for('login'))
     
     return render_template('register.html')
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -322,7 +323,7 @@ def forgot_password():
                 'user_id': str(user['_id']),
                 'created_at': datetime.datetime.utcnow()
             })
-            link = url_for('reset_password', token=token, external=True)
+            link = url_for('reset_password', token=token, _external=True)
 
             msg = Message("Password Reset Request",
                           sender = app.config['MAIL_USERNAME'],
@@ -341,9 +342,11 @@ def reset_password(token):
     token_doc = tokens_collection.find_one({'token': token})
     if not token_doc:
         flash("Invalid or expired token.", "danger")
-    if not user_id:
+    if not token_doc:
         flash("Invalid or expired token.", "danger")
         return redirect(url_for('login'))
+    
+    user_id = token_doc['user_id']
     
     user_id = token_doc['user_id']
     
