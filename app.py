@@ -11,6 +11,9 @@ from pymongo import MongoClient, ASCENDING, DESCENDING
 from bson import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
 import secrets
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key')
