@@ -310,7 +310,7 @@ def login():
         return redirect(url_for('login'))
     return render_template('login.html')
 
-@app.route('/forgot_password', method=['GET', 'POST'])
+@app.route('/forgot_password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'POST':
         email = request.form['email'].strip().lower()
@@ -336,7 +336,7 @@ def forgot_password():
     
     return render_template('forgot_password.html')
 
-@app.route('/reset_password/<token>', method=['GET', 'POST'])
+@app.route('/reset_password/<token>', methods=['GET', 'POST'])
 def reset_password(token):
     token_doc = tokens_collection.find_one({'token': token})
     if not token_doc:
