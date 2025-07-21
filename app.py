@@ -307,7 +307,7 @@ def login():
         if user and check_password_hash(user['password'], password):
             login_user(User(user))
             return redirect(url_for('index'))
-        flash('Username already exists!', 'danger')
+        flash('Invalid username or password.', 'danger')  # ✅ More accurate
         return redirect(url_for('login'))
     return render_template('login.html')
 
